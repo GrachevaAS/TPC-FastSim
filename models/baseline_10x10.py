@@ -58,8 +58,8 @@ def disc_loss(d_real, d_fake):
     return tf.reduce_mean(d_fake - d_real)
 
 
-def gen_loss(d_real, d_fake):
-    return tf.reduce_mean(d_real - d_fake)
+def gen_loss(d_fake):
+    return tf.reduce_mean(-d_fake)
 
 
 class BaselineModel10x10:
@@ -97,7 +97,7 @@ class BaselineModel10x10:
         d_fake = self.discriminator(fake)
 
         d_loss = disc_loss(d_real, d_fake) + self.gp_lambda * self.gradient_penalty(batch, fake)
-        g_loss = gen_loss(d_real, d_fake)
+        g_loss = gen_loss(d_fake)
         return {'disc_loss': d_loss, 'gen_loss': g_loss}
 
     def disc_step(self, batch):

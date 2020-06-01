@@ -16,8 +16,7 @@ from data import preprocessing
 from models import training, baseline_10x15
 from metrics import make_metric_plots, make_histograms
 
-preprocessing._VERSION = 'data_v0'
-data = preprocessing.read_csv_2d()
+data = preprocessing.read_csv_2d(version='data_v0')
 
 data_scaled = np.log10(1 + data).astype('float32')
 X_train, X_test = train_test_split(data_scaled, test_size=0.25, random_state=42)

@@ -16,8 +16,7 @@ from data import preprocessing
 from models import training, baseline_10x10 as baseline_10x10_normed
 from metrics import make_metric_plots, make_histograms
 
-preprocessing._VERSION = 'data_v1'
-data = preprocessing.read_csv_2d(pad_range = (39, 49), time_range = (266, 276))
+data = preprocessing.read_csv_2d(version='data_v1', pad_range = (39, 49), time_range = (266, 276))
 data /= data.sum(axis=(1, 2), keepdims=True) / 100
 
 data_scaled = np.log10(1 + data).astype('float32')

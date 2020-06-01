@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 _THIS_PATH = Path(os.path.realpath(__file__)).parent
-_VERSION = 'data_v1'
+
 
 class Reader:
     def __init__(self, variables, types):
@@ -25,12 +25,11 @@ class Reader:
         return pd.DataFrame(self.data, columns=['evtId'] + self.vars).set_index('evtId')
 
 
-
-def raw_to_csv(fname_in=None, fname_out=None):
+def raw_to_csv(version='data_v1', fname_in=None, fname_out=None):
     if fname_in is None:
-        fname_in = str(_THIS_PATH.joinpath(_VERSION, 'raw', 'digits.dat'))
+        fname_in = str(_THIS_PATH.joinpath(version, 'raw', 'digits.dat'))
     if fname_out is None:
-        csv_path = _THIS_PATH.joinpath(_VERSION, 'csv')
+        csv_path = _THIS_PATH.joinpath(version, 'csv')
         if not os.path.isdir(csv_path):
             csv_path.mkdir()
         fname_out = str(csv_path.joinpath('digits.csv'))
@@ -80,10 +79,10 @@ def raw_to_csv(fname_in=None, fname_out=None):
     result = pd.concat([r.build() for r in readers], axis=1).reset_index()
     result.to_csv(fname_out, index=False)
 
-def read_csv_2d(filename=None, pad_range=(40, 50), time_range=(265, 280), strict=True):
-    if filename is None:
-        filename = str(_THIS_PATH.joinpath(_VERSION, 'csv', 'digits.csv'))
 
+def read_csv_2d(filename=None, pad_range=(40, 50), time_range=(265, 280), version='data_v1', strict=True):
+    if filename is None:
+        filename = str(_THIS_PATH.joinpath(version, 'csv', 'digits.csv'))
     df = pd.read_csv(filename)
 
     sel = lambda df, col, limits: (df[col] >= limits[0]) & (df[col] < limits[1])

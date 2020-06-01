@@ -24,8 +24,7 @@ def _get_stats(arr):
     return result
 
 
-def compare_two_dists(d_real, d_gen, label, tag=None, nbins=100):
-    ax = plt.gca()
+def compare_two_dists(d_real, d_gen, label, tag=None, nbins=100, plot=True):
     bins = np.linspace(
         min(d_real.min(), d_gen.min()),
         max(d_real.max(), d_gen.max()),
@@ -39,20 +38,23 @@ def compare_two_dists(d_real, d_gen, label, tag=None, nbins=100):
         leg_entry = f'gen ({tag})'
     else:
         leg_entry = 'gen'
-    
-    plt.hist(d_real, bins=bins, density=True, label='real')
-    plt.hist(d_gen, bins=bins, density=True, label=leg_entry, histtype='step', linewidth=2.)
-    
-    string = '\n'.join([
-        f"real: mean = {stats_real.mean :.4f} +/- {stats_real.mean_err :.4f}",
-        f"gen:  mean = {stats_gen .mean :.4f} +/- {stats_gen .mean_err :.4f}",
-        f"real: std  = {stats_real.width:.4f} +/- {stats_real.width_err:.4f}",
-        f"gen:  std  = {stats_gen .width:.4f} +/- {stats_gen .width_err:.4f}",
-    ])
-    default_family = rcParams['font.family']
-    rcParams['font.family'] = 'monospace'
-    ax.add_artist(AnchoredText(string, loc=2))
-    rcParams['font.family'] = default_family
-    
-    plt.xlabel(label)
-    plt.legend()
+
+    if plot:
+        ax = plt.gca()
+        plt.hist(d_real, bins=bins, density=True, label='real')
+        plt.hist(d_gen, bins=bins, density=True, label=leg_entry, histtype='step', linewidth=2.)
+
+        string = '\n'.join([
+            f"real: mean = {stats_real.mean :.4f} +/- {stats_real.mean_err :.4f}",
+            f"gen:  mean = {stats_gen .mean :.4f} +/- {stats_gen .mean_err :.4f}",
+            f"real: std  = {stats_real.width:.4f} +/- {stats_real.width_err:.4f}",
+            f"gen:  std  = {stats_gen .width:.4f} +/- {stats_gen .width_err:.4f}",
+        ])
+        default_family = rcParams['font.family']
+        rcParams['font.family'] = 'monospace'
+        ax.add_artist(AnchoredText(string, loc=2))
+        rcParams['font.family'] = default_family
+
+        plt.xlabel(label)
+        plt.legend()
+    return np.abs(stats_real.mean - stats_gen .mean), np.abs(stats_real.width - stats_gen .width)

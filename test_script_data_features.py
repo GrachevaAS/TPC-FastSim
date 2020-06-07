@@ -26,6 +26,7 @@ def main():
     parser.add_argument('--kernel_init', type=str, default='glorot_uniform', required=False)
     parser.add_argument('--gp_lambda', type=float, default=1., required=False)
     parser.add_argument('--dropout_rate', type=float, default=0.02, required=False)
+    parser.add_argument('--data_version', type=int, default=3, required=False)
 
     args = parser.parse_args()
 
@@ -42,20 +43,21 @@ def main():
     model_path = Path('train_logs') / args.checkpoint_name / 'saved_models'
     model_path.mkdir(parents=True)
 
-    model = BaselineModel10x10(kernel_init=args.kernel_init, lr=args.lr,
-                               num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
-                               gp_lambda=args.gp_lambda, dropout_rate=args.dropout_rate)
-
     def save_model(step):
         if step % args.save_every == 0:
             print(f'Saving model on step {step} to {model_path}')
             model.generator.save(str(model_path.joinpath("generator_{:05d}.h5".format(step))))
             model.discriminator.save(str(model_path.joinpath("discriminator_{:05d}.h5".format(step))))
 
-    data, features = preprocessing.read_csv_2d(version='data_v2', pad_range=(39, 49), time_range=(266, 276))
+    params_dict = {2: ((39, 47), (267, 275)), 3: ((41, 47), (-7, 7))}
+    pad_range, time_range = params_dict[args.data_version]
+    data, features = preprocessing.read_csv_2d(version=f'data_v{args.data_version}',
+                                               pad_range=pad_range, time_range=time_range)
 
     data_scaled = np.log10(1 + data).astype('float32')
-    features = features[:, :1].astype('float32')
+    features = features.astype('float32')
+    if args.data_version == 2:
+        features = features[:, :1]
 
     Y_train, Y, X_train, X = train_test_split(data_scaled, features, test_size=0.3, random_state=42)
     Y_valid, Y_test, X_valid, X_test = train_test_split(Y, X, test_size=0.5, random_state=42)
@@ -63,6 +65,11 @@ def main():
     print("_" * 70)
     print("MEAN IS:", Y_train[Y_train > 0].mean())
     print("_" * 70)
+
+    model = BaselineModel10x10(kernel_init=args.kernel_init, lr=args.lr,
+                               num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
+                               gp_lambda=args.gp_lambda, dropout_rate=args.dropout_rate,
+                               num_features=features.shape[1], shape=data.shape[1:])
 
     writer_train = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/train')
     writer_val = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/validation')

@@ -88,7 +88,7 @@ def read_csv_2d(filename=None, pad_range=(40, 50), time_range=(265, 280), versio
     sel = lambda df, col, limits: (df[col] >= limits[0]) & (df[col] < limits[1])
 
     if 'drift_length' in df.columns:
-        df['itime'] -= df['drift_length'].astype(int)
+        df['itime'] -= df['drift_length'].round().astype(int)
 
     if 'pad_coordinate' in df.columns:
         df['ipad'] -= df['pad_coordinate'].astype(int)

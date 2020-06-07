@@ -171,7 +171,7 @@ def main():
 
         images1 = make_metric_plots(real, gen1, features=features)
 
-        img_amplitude = make_histograms(Y_test.flatten(), gen_scaled.flatten(), 'log10(amplitude + 1)', logy=True)
+        img_amplitude = make_histograms(Y.flatten(), gen_scaled.flatten(), 'log10(amplitude + 1)', logy=True)
 
         result = [images, images1, img_amplitude]
 

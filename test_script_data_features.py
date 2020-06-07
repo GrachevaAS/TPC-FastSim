@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 import argparse
+import functools
 import numpy as np
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
@@ -8,7 +9,6 @@ import tensorflow as tf
 from data import preprocessing
 from models.training_cgan import train
 from models.baseline_10x10_cgan import BaselineModel10x10
-from metrics import make_metric_plots, make_histograms
 
 
 def main():
@@ -74,27 +74,6 @@ def main():
     writer_train = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/train')
     writer_val = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/validation')
 
-    unscale = lambda x: 10 ** x - 1
-
-    def write_hist_summary(step):
-        if step % args.save_every == 0:
-            gen_scaled = model.make_fake(X_valid).numpy()
-            real = unscale(Y_valid)
-            gen = unscale(gen_scaled)
-            gen[gen < 0] = 0
-            gen1 = np.where(gen < 1., 0, gen)
-            images = make_metric_plots(real, gen)
-            images1 = make_metric_plots(real, gen1)
-
-            img_amplitude = make_histograms(Y_valid.flatten(), gen_scaled.flatten(), 'log10(amplitude + 1)', logy=True)
-
-            with writer_val.as_default():
-                for k, img in images.items():
-                    tf.summary.image(k, img, step)
-                for k, img in images1.items():
-                    tf.summary.image("{} (amp > 1)".format(k), img, step)
-                tf.summary.image("log10(amplitude + 1)", img_amplitude, step)
-
     def schedule_lr(step):
         model.disc_opt.lr.assign(model.disc_opt.lr * args.lr_schedule_rate)
         model.gen_opt.lr.assign(model.gen_opt.lr * args.lr_schedule_rate)
@@ -108,7 +87,13 @@ def main():
         with writer_val.as_default():
             tf.summary.scalar("num disc updates", model.num_disc_updates, step)
 
-    train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses, args.num_epochs, args.batch_size,
+    from common import write_hist_summary, get_images
+    get_images = functools.partial(get_images, model=model, sample=(X_valid, Y_valid))
+    write_hist_summary = functools.partial(write_hist_summary,
+                                           save_every=args.save_every, writer=writer_val, get_images=get_images)
+
+    train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses,
+          args.num_epochs, args.batch_size,
           train_writer=writer_train, val_writer=writer_val,
           callbacks=[write_hist_summary, save_model, schedule_lr, schedule_disc_updates]
           )

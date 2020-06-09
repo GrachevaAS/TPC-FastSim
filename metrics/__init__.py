@@ -10,42 +10,39 @@ import PIL
 from plotting import _bootstrap_error
 
 
-def _gaussian_fit(img):
-    assert img.ndim == 2, '_gaussian_fit: Wrong image dimentions'
-    assert (img >= 0).all(), '_gaussian_fit: negative image content'
-    assert (img > 0).any(), '_gaussian_fit: blank image'
-    img_n = img / img.sum()
+def get_rosenblatt_stat(real, gen):
+    n, m = len(real), len(gen)
+    real, gen = np.sort(real), np.sort(gen)
+    common = np.concatenate([real, gen])
+    mask = np.concatenate([np.zeros(n), np.ones(m)])
+    mask_sorted = mask[np.argsort(common)]
+    R = np.arange(n + m)[mask_sorted == 0]
+    S = np.arange(n + m)[mask_sorted == 1]
 
-    mu = np.fromfunction(
-        lambda i, j: (img_n[np.newaxis,...] * np.stack([i, j])).sum(axis=(1, 2)),
-        shape=img.shape
-    )
-    cov = np.fromfunction(
-        lambda i, j: (
-            (img_n[np.newaxis,...] * np.stack([i * i, j * i, i * j, j * j])).sum(axis=(1, 2))
-        ) - np.stack([mu[0]**2, mu[0]*mu[1], mu[0]*mu[1], mu[1]**2]),
-        shape=img.shape
-    ).reshape(2, 2)
-    return mu, cov
+    mseX = np.sum((R - np.arange(n) - 1) ** 2) / m
+    mseY = np.sum((S - np.arange(m) - 1) ** 2) / n
+    omega = (1 / 6 + mseX + mseY) / n / m - 2 / 3
+    rstat = float(n * m) / (n + m) * omega
+    return omega, rstat
 
 
-def _get_val_metric_single(img):
-    """Returns a vector of gaussian fit results to the image.
-    The components are: [mu0, mu1, sigma0^2, sigma1^2, covariance, integral]
-    """
-    assert img.ndim == 2, '_get_val_metric_single: Wrong image dimentions'
+def get_kolmogorov_smirnov_stat(real, gen):
+    n, m = len(real), len(gen)
+    common = np.concatenate([real, gen])
+    mask = np.concatenate([np.zeros(n), np.ones(m)])
+    sorted_common = np.argsort(common)
+    sorted_mask = mask[sorted_common]
+    cum_G = np.cumsum(sorted_mask)
+    cum_F = np.cumsum(1 - sorted_mask)
 
-    img = np.where(img < 0, 0, img)
-
-    mu, cov = _gaussian_fit(img)
-
-    return np.array((*mu, *cov.diagonal(), cov[0, 1], img.sum()))
+    D_positive = np.max((np.arange(n) + 1) / n - cum_G[sorted_mask == 0] / m)
+    D_negative = np.max((np.arange(m) + 1) / m - cum_F[sorted_mask == 1] / n)
+    D = np.max([D_positive, D_negative])
+    ks_stat = np.sqrt(float(n * m) / (n + m)) * D
+    return D, ks_stat
 
 
 _METRIC_NAMES = ['Mean0', 'Mean1', 'Sigma0^2', 'Sigma1^2', 'Cov01', 'Sum']
-
-
-get_val_metric = np.vectorize(_get_val_metric_single, signature='(m,n)->(k)')
 
 
 def get_val_metric_v(imgs):
@@ -102,7 +99,7 @@ def make_metric_plots(images_real, images_gen, features=None, calc_chi2=False):
         metric_real = get_val_metric_v(images_real)
         metric_gen  = get_val_metric_v(images_gen )
     
-        plots.update({name : make_histograms(real, gen, name)
+        plots.update({name: make_histograms(real, gen, name)
                       for name, real, gen in zip(_METRIC_NAMES, metric_real.T, metric_gen.T)})
 
         if features is not None:
@@ -125,6 +122,7 @@ def make_metric_plots(images_real, images_gen, features=None, calc_chi2=False):
         return plots, chi2
 
     return plots
+
 
 def calc_trend(x, y, do_plot=True, bins=100, window_size=20, **kwargs):
     assert x.ndim == 1, 'calc_trend: wrong x dim'
@@ -155,7 +153,6 @@ def calc_trend(x, y, do_plot=True, bins=100, window_size=20, **kwargs):
             range(window_size, len(bins))
         )
     ]).T
-
 
     if do_plot:
         mean_p_std_err = (mean_err**2 + std_err**2)**0.5
@@ -202,15 +199,10 @@ def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figs
             max(feature_real.max(), feature_gen.max()),
             20
         )
-        (
-            (real_mean, real_std),
-            (real_mean_err, real_std_err)
-        ) = calc_trend(feature_real, real, do_plot=False, bins=bins, window_size=1)
-        (
-            (gen_mean, gen_std),
-            (gen_mean_err, gen_std_err)
-        ) = calc_trend(feature_gen, gen, do_plot=False, bins=bins, window_size=1)
-
+        (real_mean, real_std), (real_mean_err, real_std_err) = calc_trend(feature_real, real,
+                                                                          do_plot=False, bins=bins, window_size=1)
+        (gen_mean, gen_std), (gen_mean_err, gen_std_err) = calc_trend(feature_gen, gen,
+                                                                      do_plot=False, bins=bins, window_size=1)
         gen_upper = gen_mean + gen_std
         gen_lower = gen_mean - gen_std
         gen_err2 = gen_mean_err**2 + gen_std_err**2

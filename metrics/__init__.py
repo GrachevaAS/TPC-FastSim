@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib as mpl
 mpl.use("Agg")
 import matplotlib.pyplot as plt
+from collections import Counter
 import PIL
 
 
@@ -40,6 +41,39 @@ def get_kolmogorov_smirnov_stat(real, gen):
     D = np.max([D_positive, D_negative])
     ks_stat = np.sqrt(float(n * m) / (n + m)) * D
     return D, ks_stat
+
+
+def calc_bin_stats(feature_real, real, feature_gen, gen, bins=25, window_size=1):
+    assert bins > 0
+    bounds = (min(feature_real.min(), feature_gen.min()), max(feature_real.max(), feature_gen.max()))
+    bins = np.linspace(bounds[0], bounds[1], bins)
+
+    cats_real = (feature_real[:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
+    cats_real[feature_real == np.max(feature_real)] = len(bins) - 2
+    cats_gen = (feature_gen[:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
+    cats_gen[feature_gen == np.max(feature_gen)] = len(bins) - 2
+
+    counts = [Counter(cats_gen)[c] for c in range(len(bins) - 1)]
+    assert np.all(np.array(counts) > 30)
+
+    def stats(x1, x2):
+        return (
+            get_kolmogorov_smirnov_stat(x1, x2)[0],
+            get_rosenblatt_stat(x1, x2)[0]
+        )
+
+    ksstats, rstats, bin_centers = np.array([
+        stats(
+            gen[(cats_gen >= left) & (cats_gen < right)],
+            real[(cats_real >= left) & (cats_real < right)]
+        ) + ((bins[left] + bins[right]) / 2,)
+        for left, right in zip(
+            range(len(bins) - window_size),
+            range(window_size, len(bins))
+        )
+    ]).T
+
+    return ksstats, rstats
 
 
 _METRIC_NAMES = ['Mean0', 'Mean1', 'Sigma0^2', 'Sigma1^2', 'Cov01', 'Sum']
@@ -90,10 +124,11 @@ def make_histograms(data_real, data_gen, title, figsize=(8, 8), n_bins=100, logy
     return np.array(img.getdata(), dtype=np.uint8).reshape(1, img.size[0], img.size[1], -1)
 
 
-def make_metric_plots(images_real, images_gen, features=None, calc_chi2=False):
+def make_metric_plots(images_real, images_gen, features=None, return_raw_metrics=False, calc_chi2=False):
     plots = {}
     if calc_chi2:
         chi2 = 0
+    metric_real, metric_gen = np.array([]), np.array([])
 
     try:
         metric_real = get_val_metric_v(images_real)
@@ -118,13 +153,20 @@ def make_metric_plots(images_real, images_gen, features=None, calc_chi2=False):
     except AssertionError as e:
         print(f"WARNING! Assertion error ({e})")
 
+    result = [plots]
+
+    if return_raw_metrics:
+        result += [(metric_real, metric_gen)]
+
     if calc_chi2:
-        return plots, chi2
+        result += [chi2]
 
-    return plots
+    if len(result) == 1:
+        return result[0]
+    return result
 
 
-def calc_trend(x, y, do_plot=True, bins=100, window_size=20, **kwargs):
+def calc_trend(x, y, do_plot=True, bins=100, window_size=10, **kwargs):
     assert x.ndim == 1, 'calc_trend: wrong x dim'
     assert y.ndim == 1, 'calc_trend: wrong y dim'
 
@@ -173,11 +215,8 @@ def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figs
     real = real.squeeze()
     gen = gen.squeeze()
 
-    bins = np.linspace(
-        min(feature_real.min(), feature_gen.min()),
-        max(feature_real.max(), feature_gen.max()),
-        100
-    )
+    bounds = (min(feature_real.min(), feature_gen.min()), max(feature_real.max(), feature_gen.max()))
+    bins = np.linspace(bounds[0], bounds[1], 100)
 
     fig = plt.figure(figsize=figsize)
     calc_trend(feature_real, real, bins=bins, label='real', color='blue')
@@ -194,15 +233,11 @@ def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figs
     img_data = np.array(img.getdata(), dtype=np.uint8).reshape(1, img.size[0], img.size[1], -1)
 
     if calc_chi2:
-        bins = np.linspace(
-            min(feature_real.min(), feature_gen.min()),
-            max(feature_real.max(), feature_gen.max()),
-            20
-        )
+        bins = np.linspace(bounds[0], bounds[1], 20)
         (real_mean, real_std), (real_mean_err, real_std_err) = calc_trend(feature_real, real,
                                                                           do_plot=False, bins=bins, window_size=1)
         (gen_mean, gen_std), (gen_mean_err, gen_std_err) = calc_trend(feature_gen, gen,
-                                                                      do_plot=False, bins=bins, window_size=1)
+                                                                          do_plot=False, bins=bins, window_size=1)
         gen_upper = gen_mean + gen_std
         gen_lower = gen_mean - gen_std
         gen_err2 = gen_mean_err**2 + gen_std_err**2

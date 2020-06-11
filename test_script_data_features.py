@@ -64,6 +64,8 @@ def main():
 
     print("_" * 70)
     print("MEAN IS:", Y_train[Y_train > 0].mean())
+    print('FEATURE MEAN:', X_train.mean(axis=0))
+    print('FEATURE STD:', X_train.std(axis=0))
     print("_" * 70)
 
     model = BaselineModel10x10(kernel_init=args.kernel_init, lr=args.lr,
@@ -87,10 +89,10 @@ def main():
         with writer_val.as_default():
             tf.summary.scalar("num disc updates", model.num_disc_updates, step)
 
-    from common import write_hist_summary, get_images
-    get_images = functools.partial(get_images, model=model, sample=(X_valid, Y_valid))
+    from common import write_hist_summary
     write_hist_summary = functools.partial(write_hist_summary,
-                                           save_every=args.save_every, writer=writer_val, get_images=get_images)
+                                           save_every=args.save_every, writer=writer_val,
+                                           model=model, sample=(X_valid, Y_valid))
 
     train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses,
           args.num_epochs, args.batch_size,

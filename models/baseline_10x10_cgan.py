@@ -24,6 +24,7 @@ def get_generator_conv(activation, kernel_init, final_shape):
                                kernel_initializer=kernel_init),
 
         tf.keras.layers.Reshape(final_shape),
+        # tf.keras.layers.Activation('relu'),
     ], name='generator_conv')
     return generator_conv
 
@@ -106,9 +107,8 @@ def gen_loss(d_fake):
 
 
 class BaselineModel10x10:
-    def __init__(self, activation=tf.keras.activations.relu, kernel_init='glorot_uniform',
-                 dropout_rate=0.02, lr=1e-4, latent_dim=32, gp_lambda=1., num_disc_updates=3,
-                 num_features=1, shape=(10, 10)):
+    def __init__(self, kernel_init, lr, num_disc_updates, latent_dim, gp_lambda, dropout_rate, num_features, shape,
+                 activation=tf.keras.activations.relu):
         self.disc_opt = tf.keras.optimizers.RMSprop(lr)
         self.gen_opt = tf.keras.optimizers.RMSprop(lr)
         self.latent_dim = latent_dim

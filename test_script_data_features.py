@@ -30,6 +30,14 @@ def main():
 
     args = parser.parse_args()
 
+    print("")
+    print("----" * 10)
+    print("Arguments:")
+    for k, v in vars(args).items():
+        print(f"    {k} : {v}")
+    print("----" * 10)
+    print("")
+
     os.environ['CUDA_DEVICE_ORDER'] = 'PCI_BUS_ID'
     if args.gpu_num is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_num
@@ -42,6 +50,13 @@ def main():
 
     model_path = Path('train_logs') / args.checkpoint_name / 'saved_models'
     model_path.mkdir(parents=True)
+    with open(model_path.parent / 'arguments.txt', 'w+') as f:
+        all_args = vars(args)
+        f.write(''.join([f'--{argname}\n{argval}\n' for argname, argval in all_args.items()
+                         if type(argval) != bool and argval is not None and argname != 'checkpoint_name'] +
+                        [f'--{argname}\n' for argname, argval in all_args.items() if argval is True]
+                        )
+                )
 
     def save_model(step):
         if step % args.save_every == 0:

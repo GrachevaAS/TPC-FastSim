@@ -24,7 +24,6 @@ def get_generator_conv(activation, kernel_init, final_shape):
                                kernel_initializer=kernel_init),
 
         tf.keras.layers.Reshape(final_shape),
-        # tf.keras.layers.Activation('relu'),
     ], name='generator_conv')
     return generator_conv
 

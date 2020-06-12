@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
 from data import preprocessing
+from metrics import get_val_metric_v
 from models.training_cgan import train
 from models.baseline_10x10_cgan import BaselineModel10x10
 
@@ -14,7 +15,7 @@ from models.baseline_10x10_cgan import BaselineModel10x10
 def main():
     parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
     parser.add_argument('--checkpoint_name', type=str, required=True)
-    parser.add_argument('--batch_size', type=int, default=32, required=False)
+    parser.add_argument('--batch_size', type=int, default=128, required=False)
     parser.add_argument('--lr', type=float, default=1e-4, required=False)
     parser.add_argument('--num_disc_updates', type=int, default=3, required=False)
     parser.add_argument('--lr_schedule_rate', type=float, default=0.998, required=False)
@@ -109,10 +110,12 @@ def main():
         with writer_val.as_default():
             tf.summary.scalar("num disc updates", model.num_disc_updates, step)
 
-    from common import write_hist_summary
+    from common import write_hist_summary, unscale
+    metric_real = get_val_metric_v(unscale(Y_valid))
     write_hist_summary = functools.partial(write_hist_summary,
                                            save_every=args.save_every, writer=writer_val,
-                                           model=model, sample=(X_valid, Y_valid))
+                                           model=model, sample=(X_valid, Y_valid), metrics_real=metric_real,
+                                           )
 
     train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses,
           args.num_epochs, args.batch_size,

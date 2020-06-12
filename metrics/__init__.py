@@ -124,15 +124,16 @@ def make_histograms(data_real, data_gen, title, figsize=(8, 8), n_bins=100, logy
     return np.array(img.getdata(), dtype=np.uint8).reshape(1, img.size[0], img.size[1], -1)
 
 
-def make_metric_plots(images_real, images_gen, features=None, return_raw_metrics=False, calc_chi2=False):
+def make_metric_plots(images_real, images_gen, metric_real=None, features=None,
+                      return_raw_metrics=False, calc_chi2=False):
     plots = {}
     if calc_chi2:
         chi2 = 0
-    metric_real, metric_gen = np.array([]), np.array([])
 
     try:
-        metric_real = get_val_metric_v(images_real)
-        metric_gen  = get_val_metric_v(images_gen )
+        if metric_real is None:
+            metric_real = get_val_metric_v(images_real)
+        metric_gen = get_val_metric_v(images_gen)
     
         plots.update({name: make_histograms(real, gen, name)
                       for name, real, gen in zip(_METRIC_NAMES, metric_real.T, metric_gen.T)})
@@ -152,6 +153,7 @@ def make_metric_plots(images_real, images_gen, features=None, return_raw_metrics
 
     except AssertionError as e:
         print(f"WARNING! Assertion error ({e})")
+        metric_real, metric_gen = np.array([]), np.array([])
 
     result = [plots]
 

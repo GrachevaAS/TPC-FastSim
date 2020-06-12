@@ -5,12 +5,15 @@ import metrics
 from metrics import make_metric_plots, make_histograms, calc_bin_stats
 
 
-unscale = lambda x: 10 ** x - 1
+def unscale(x):
+    return 10 ** x - 1
 
 
 def get_images(model, sample,
+               metrics_real=None,
                return_raw_data=False, return_stats=False, calc_chi2=False,
-               gen_more=None, batch_size=128,
+               gen_more=None,
+               batch_size=128,
                features_names=('crossing_angle', 'dip_angle', 'drift_length')):
     X, Y = sample
     assert X.ndim == 2
@@ -36,13 +39,13 @@ def get_images(model, sample,
     if len(features_names) >= 3:
         features['time_bin_fraction'] = (X[:, 2] % 1, gen_features[:, 2] % 1)
 
-    result = make_metric_plots(real, gen, features=features, return_raw_metrics=True, calc_chi2=calc_chi2)
+    result = make_metric_plots(real, gen, metric_real=metrics_real, features=features, return_raw_metrics=True, calc_chi2=calc_chi2)
     images = result[0]
     metrics_real, metrics_gen = result[1]
     if calc_chi2:
         chi2 = result[-1]
 
-    images1 = make_metric_plots(real, gen1, features=features)
+    images1 = make_metric_plots(real, gen1, metric_real=metrics_real, features=features)
 
     img_amplitude = make_histograms(Y.flatten(), gen_scaled.flatten(), 'log10(amplitude + 1)', logy=True)
 
@@ -52,17 +55,8 @@ def get_images(model, sample,
         result += [(gen_features, gen)]
 
     if return_stats:
-        stats_cond = [[] for _ in features_names]
-        for i in range(X.shape[-1]):
-            for j in range(metrics_real.shape[-1]):
-                ksstats, rstats = calc_bin_stats(X[:, i], metrics_real[:, j], gen_features[:, i], metrics_gen[:, j])
-                stats_cond[i].append((ksstats.mean(), rstats.mean()))
-        stats_uncond = []
-        for j in range(metrics_real.shape[-1]):
-            ksstat = metrics.get_kolmogorov_smirnov_stat(metrics_real[:, j], metrics_gen[:, j])[0]
-            rstat = metrics.get_rosenblatt_stat(metrics_real[:, j], metrics_gen[:, j])[0]
-            stats_uncond.append((ksstat, rstat))
-        result += [(np.array(stats_uncond), np.array(stats_cond))]
+        stats_uncond, stats_cond = get_ks_and_rstat(X, gen_features, metrics_real, metrics_gen)
+        result += [(stats_uncond, stats_cond)]
 
     if calc_chi2:
         result += [chi2]
@@ -70,26 +64,47 @@ def get_images(model, sample,
     return result
 
 
-def write_hist_summary(step, save_every, writer, model=None, sample=None,
+def write_hist_summary(step, save_every, writer,
+                       model=None, sample=None, metrics_real=None,
                        features_names=('crossing_angle', 'dip_angle', 'drift_length')):
     assert model is not None and sample is not None
     if step % save_every == 0:
-        images, images1, img_amplitude, (stats_uncond, stats_cond), chi2 = get_images(model, sample,
-                                                                                  return_stats=True, calc_chi2=True,
-                                                                                  features_names=features_names)
+        images, images1, img_amplitude, (stats_uncond, stats_cond), chi2 = get_images(
+            model, sample, metrics_real=metrics_real,
+            return_stats=True, calc_chi2=True, features_names=features_names
+        )
         with writer.as_default():
             tf.summary.scalar("chi2", chi2, step)
-            for k, stat_name in enumerate(['KS stat', 'Rosenblatt stat']):
-                for i, feature in enumerate(features_names):
-                    tf.summary.scalar(f"{stat_name}: {feature} sum", stats_cond[i, :, k].sum(), step)
-                for j in range(stats_cond.shape[-1]):
-                    tf.summary.scalar(f"{stat_name}: {metrics._METRIC_NAMES[j]} sum", stats_cond[:, j, k].sum(), step)
-                tf.summary.scalar(f"{stat_name}: sum of all", stats_cond[:, :, k].sum(), step)
-                for j in range(len(stats_uncond)):
-                    tf.summary.scalar(f"{stat_name}: {metrics._METRIC_NAMES[j]}", stats_uncond[j, k], step)
+            if stats_cond.shape[-1] != 0:
+                for k, stat_name in enumerate(['ks stat', 'rosenblatt stat']):
+                    for i, feature in enumerate(features_names):
+                        tf.summary.scalar(f"{stat_name}: {feature} total", stats_cond[i, :, k].sum(), step)
+                    for j in range(stats_cond.shape[1]):
+                        tf.summary.scalar(f"{stat_name}: {metrics._METRIC_NAMES[j]} total", stats_cond[:, j, k].sum(), step)
+                    tf.summary.scalar(f"{stat_name}: all conditional", stats_cond[:, :, k].sum(), step)
+                    for j in range(stats_uncond.shape[0]):
+                        tf.summary.scalar(f"{stat_name}: {metrics._METRIC_NAMES[j]}", stats_uncond[j, k], step)
+                    tf.summary.scalar(f"{stat_name}: all unconditional", stats_uncond[:, k].sum(), step)
+                    tf.summary.scalar(f"{stat_name}: total sum",
+                                      stats_cond[:, :, k].sum() / len(features_names) + stats_uncond[:, k].sum(), step)
 
             for k, img in images.items():
                 tf.summary.image(k, img, step)
             for k, img in images1.items():
                 tf.summary.image("{} (amp > 1)".format(k), img, step)
             tf.summary.image("log10(amplitude + 1)", img_amplitude, step)
+
+
+def get_ks_and_rstat(real_features, gen_features, metrics_real, metrics_gen):
+    stats_cond = [[] for _ in range(real_features.shape[-1])]
+    for i in range(real_features.shape[-1]):
+        for j in range(metrics_gen.shape[-1]):
+            ksstats, rstats = calc_bin_stats(
+                real_features[:, i], metrics_real[:, j], gen_features[:, i], metrics_gen[:, j])
+            stats_cond[i].append((ksstats.mean(), rstats.mean()))
+    stats_uncond = []
+    for j in range(metrics_gen.shape[-1]):
+        ksstat = metrics.get_kolmogorov_smirnov_stat(metrics_real[:, j], metrics_gen[:, j])[0]
+        rstat = metrics.get_rosenblatt_stat(metrics_real[:, j], metrics_gen[:, j])[0]
+        stats_uncond.append((ksstat, rstat))
+    return np.array(stats_uncond), np.array(stats_cond)

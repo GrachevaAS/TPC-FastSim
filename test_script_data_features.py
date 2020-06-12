@@ -68,6 +68,11 @@ def main():
     print('FEATURE STD:', X_train.std(axis=0))
     print("_" * 70)
 
+    def normalize_features(f, mean=X_train.mean(axis=0), std=X_train.std(axis=0)):
+        return (f - mean) / std
+
+    X_train, X_valid, X_test = normalize_features(X_train), normalize_features(X_valid), normalize_features(X_test)
+
     model = BaselineModel10x10(kernel_init=args.kernel_init, lr=args.lr,
                                num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
                                gp_lambda=args.gp_lambda, dropout_rate=args.dropout_rate,

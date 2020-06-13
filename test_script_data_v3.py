@@ -37,9 +37,7 @@ def main():
     parser.add_argument('--feature_noise_power', type=float, default=None)
     parser.add_argument('--feature_noise_decay', type=float, default=None)
 
-
     args = parser.parse_args()
-
 
     assert (
         (args.feature_noise_power is None) ==
@@ -64,22 +62,20 @@ def main():
     logical_devices = tf.config.experimental.list_logical_devices('GPU')
     assert len(logical_devices) > 0, "Not enough GPU hardware devices available"
 
-    model_path = Path('saved_models') / args.checkpoint_name
+    model_path = Path('train_logs') / args.checkpoint_name / 'saved_models'
     if args.prediction_only:
         assert model_path.exists(), "Couldn't find model directory"
     else:
         assert not model_path.exists(), "Model directory already exists"
         model_path.mkdir(parents=True)
 
-        with open(model_path / 'arguments.txt', 'w') as f:
-            raw_args = [a for a in sys.argv[1:] if a[0] != '@']
-            fnames = [a[1:] for a in sys.argv[1:] if a[0] == '@']
-
-            f.write('\n'.join(raw_args))
-            for fname in fnames:
-                with open(fname, 'r') as f_in:
-                    if len(raw_args) > 0: f.write('\n')
-                    f.write(f_in.read())
+        with open(model_path.parent / 'arguments.txt', 'w+') as f:
+            all_args = vars(args)
+            f.write(''.join([f'--{argname}\n{argval}\n' for argname, argval in all_args.items()
+                             if type(argval) != bool and argval is not None and argname != 'checkpoint_name'] +
+                            [f'--{argname}\n' for argname, argval in all_args.items() if argval is True]
+                            )
+                    )
 
     model = BaselineModel_6x15(kernel_init=args.kernel_init, lr=args.lr,
                                num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
@@ -114,8 +110,6 @@ def main():
         print(f'Loading discriminator weights from {str(latest_disc_checkpoint)}')
         model.discriminator.load_weights(str(latest_disc_checkpoint))
 
-
-
     def save_model(step):
         if step % args.save_every == 0:
             print(f'Saving model on step {step} to {model_path}')
@@ -125,15 +119,15 @@ def main():
     preprocessing._VERSION = 'data_v3'
     pad_range = (41, 47)
     time_range = (-7, 8)
-    data, features = preprocessing.read_csv_2d(pad_range=pad_range, time_range=time_range)
+    data, features = preprocessing.read_csv_2d(version='data_v3', pad_range=pad_range, time_range=time_range)
     features = features.astype('float32')
 
     data_scaled = np.log10(1 + data).astype('float32')
     Y_train, Y_test, X_train, X_test = train_test_split(data_scaled, features, test_size=0.25, random_state=42)
 
     if not args.prediction_only:
-        writer_train = tf.summary.create_file_writer(f'logs/{args.checkpoint_name}/train')
-        writer_val = tf.summary.create_file_writer(f'logs/{args.checkpoint_name}/validation')
+        writer_train = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/train')
+        writer_val = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/validation')
 
     unscale = lambda x: 10 ** x - 1
 
@@ -183,7 +177,6 @@ def main():
 
         return result
 
-
     def write_hist_summary(step):
         if step % args.save_every == 0:
             images, images1, img_amplitude, chi2 = get_images(calc_chi2=True)
@@ -196,7 +189,6 @@ def main():
                 for k, img in images1.items():
                     tf.summary.image("{} (amp > 1)".format(k), img, step)
                 tf.summary.image("log10(amplitude + 1)", img_amplitude, step)
-
 
     def schedule_lr(step):
         model.disc_opt.lr.assign(model.disc_opt.lr * args.lr_schedule_rate)

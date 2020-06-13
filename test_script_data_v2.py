@@ -65,7 +65,7 @@ def main():
     logical_devices = tf.config.experimental.list_logical_devices('GPU')
     assert len(logical_devices) > 0, "Not enough GPU hardware devices available"
 
-    model_path = Path('saved_models') / args.checkpoint_name
+    model_path = Path('train_logs') / args.checkpoint_name / 'saved_models'
     if args.prediction_only:
         assert model_path.exists(), "Couldn't find model directory"
     else:
@@ -136,8 +136,8 @@ def main():
     Y_train, Y_test, X_train, X_test = train_test_split(data_scaled, features, test_size=0.25, random_state=42)
 
     if not args.prediction_only:
-        writer_train = tf.summary.create_file_writer(f'logs/{args.checkpoint_name}/train')
-        writer_val = tf.summary.create_file_writer(f'logs/{args.checkpoint_name}/validation')
+        writer_train = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/train')
+        writer_val = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/validation')
 
     unscale = lambda x: 10 ** x - 1
 

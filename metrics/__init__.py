@@ -45,14 +45,18 @@ def get_kolmogorov_smirnov_stat(real, gen):
 
 def calc_bin_stats(feature_real, real, feature_gen, gen, bins=25, window_size=1):
     assert bins > 0
+    bins = np.linspace(feature_real.min(), feature_real.max(), bins+1)
     bounds = (min(feature_real.min(), feature_gen.min()), max(feature_real.max(), feature_gen.max()))
-    bins = np.linspace(bounds[0], bounds[1], bins)
+    bins[0] = bounds[0]
+    bins[-1] = bounds[1]
 
     cats_real = (feature_real[:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
     cats_real[feature_real == np.max(feature_real)] = len(bins) - 2
     cats_gen = (feature_gen[:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
     cats_gen[feature_gen == np.max(feature_gen)] = len(bins) - 2
 
+    counts = [Counter(cats_real)[c] for c in range(len(bins) - 1)]
+    assert np.all(np.array(counts) > 30)
     counts = [Counter(cats_gen)[c] for c in range(len(bins) - 1)]
     assert np.all(np.array(counts) > 30)
 
@@ -74,6 +78,52 @@ def calc_bin_stats(feature_real, real, feature_gen, gen, bins=25, window_size=1)
     ]).T
 
     return ksstats, rstats
+
+
+def calc_bin_stats_multidimensional(feature_real, real, feature_gen, gen, nbins=4):
+    assert nbins > 0
+    assert feature_real.ndim == 2 and feature_gen.ndim == 2
+    nfeatures = feature_real.shape[1]
+    assert nfeatures == 3  # TODO
+    cats_real, cats_gen = [], []
+
+    for i in range(nfeatures):
+        bins = np.linspace(feature_real[:, i].min(), feature_real[:, i].max(), nbins + 1)
+        bounds_ = (min(feature_real[:, i].min(), feature_gen[:, i].min()),
+                   max(feature_real[:, i].max(), feature_gen[:, i].max()))
+        bins[0] = bounds_[0]
+        bins[-1] = bounds_[1]
+
+        cats_real_ = (feature_real[:, i][:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
+        cats_real_[feature_real[:, i] == bounds_[1]] = len(bins) - 2
+        cats_gen_ = (feature_gen[:, i][:, np.newaxis] < bins[np.newaxis, 1:]).argmax(axis=1)
+        cats_gen_[feature_gen[:, i] == bounds_[1]] = len(bins) - 2
+
+        cats_real.append(cats_real_)
+        cats_gen.append(cats_gen_)
+
+    cats_real = np.stack(cats_real).T
+    counter = np.zeros(tuple([nbins] * nfeatures))
+    for mdbin in cats_real:
+        counter[tuple(mdbin)] += 1
+    assert ((counter > 30).all())
+
+    cats_gen = np.stack(cats_gen).T
+    counter = np.zeros(tuple([nbins] * nfeatures))
+    for mdbin in cats_gen:
+        counter[tuple(mdbin)] += 1
+    assert ((counter > 30).all())
+
+    # only 3 dimensions
+    x, y, z = np.mgrid[0:nbins:1, 0:nbins:1, 0:nbins:1]
+    grid = np.stack([x, y, z], axis=-1).reshape(-1, nfeatures)
+
+    ksstats = np.array([get_kolmogorov_smirnov_stat(
+        real[(cats_real == xyz).all(axis=-1)],
+        gen[(cats_gen == xyz).all(axis=-1)]
+    )[0] for xyz in grid]
+    )
+    return ksstats
 
 
 _METRIC_NAMES = ['Mean0', 'Mean1', 'Sigma0^2', 'Sigma1^2', 'Cov01', 'Sum']
@@ -103,6 +153,9 @@ def get_val_metric_v(imgs):
 
 
 def make_histograms(data_real, data_gen, title, figsize=(8, 8), n_bins=100, logy=False):
+    if title == 'Sum':
+        data_real = data_real[data_real < 5e+4]
+        data_gen = data_gen[data_gen < 5e+4]
     l = min(data_real.min(), data_gen.min())
     r = max(data_real.max(), data_gen.max())
     bins = np.linspace(l, r, n_bins + 1)
@@ -124,8 +177,8 @@ def make_histograms(data_real, data_gen, title, figsize=(8, 8), n_bins=100, logy
     return np.array(img.getdata(), dtype=np.uint8).reshape(1, img.size[0], img.size[1], -1)
 
 
-def make_metric_plots(images_real, images_gen, metric_real=None, features=None,
-                      return_raw_metrics=False, calc_chi2=False):
+def make_metric_plots(images_real, images_gen, metric_real=None, metric_gen=None, features=None,
+                      return_raw_metrics=False, calc_chi2=False, window_size=10):
     plots = {}
     if calc_chi2:
         chi2 = 0
@@ -133,7 +186,8 @@ def make_metric_plots(images_real, images_gen, metric_real=None, features=None,
     try:
         if metric_real is None:
             metric_real = get_val_metric_v(images_real)
-        metric_gen = get_val_metric_v(images_gen)
+        if metric_gen is None:
+            metric_gen = get_val_metric_v(images_gen)
     
         plots.update({name: make_histograms(real, gen, name)
                       for name, real, gen in zip(_METRIC_NAMES, metric_real.T, metric_gen.T)})
@@ -143,9 +197,8 @@ def make_metric_plots(images_real, images_gen, metric_real=None, features=None,
                 for metric_name, real, gen in zip(_METRIC_NAMES, metric_real.T, metric_gen.T):
                     name = f'{metric_name} vs {feature_name}'
                     if calc_chi2 and (metric_name != "Sum"):
-                        plots[name], chi2_i = make_trend(feature_real, real,
-                                                         feature_gen, gen,
-                                                         name, calc_chi2=True)
+                        plots[name], chi2_i = make_trend(feature_real, real, feature_gen, gen,
+                                                         name, calc_chi2=True, window_size=window_size)
                         chi2 += chi2_i
                     else:
                         plots[name] = make_trend(feature_real, real,
@@ -168,7 +221,7 @@ def make_metric_plots(images_real, images_gen, metric_real=None, features=None,
     return result
 
 
-def calc_trend(x, y, do_plot=True, bins=100, window_size=10, **kwargs):
+def calc_trend(x, y, do_plot=True, bins=100, window_size=10, issum=False, **kwargs):
     assert x.ndim == 1, 'calc_trend: wrong x dim'
     assert y.ndim == 1, 'calc_trend: wrong y dim'
 
@@ -207,11 +260,15 @@ def calc_trend(x, y, do_plot=True, bins=100, window_size=10, **kwargs):
         plt.fill_between(bin_centers, mean + std - mean_p_std_err, mean + std + mean_p_std_err, **kwargs)
         kwargs['alpha'] *= 0.25
         plt.fill_between(bin_centers, mean - std + mean_p_std_err, mean + std - mean_p_std_err, **kwargs)
+        if issum:
+            mu_min, mu_max = (mean - mean_err).min(), (mean + mean_err).max()
+            plt.ylim(max((mean - std - mean_p_std_err).min(), mu_min - 2*(mu_max - mu_min)),
+                     min((mean + std + mean_p_std_err).max(), mu_max + 2*(mu_max - mu_min)))
 
     return (mean, std), (mean_err, std_err)
 
 
-def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figsize=(8, 8)):
+def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figsize=(8, 8), window_size=10):
     feature_real = feature_real.squeeze()
     feature_gen = feature_gen.squeeze()
     real = real.squeeze()
@@ -221,8 +278,8 @@ def make_trend(feature_real, real, feature_gen, gen, name, calc_chi2=False, figs
     bins = np.linspace(bounds[0], bounds[1], 100)
 
     fig = plt.figure(figsize=figsize)
-    calc_trend(feature_real, real, bins=bins, label='real', color='blue')
-    calc_trend(feature_gen, gen, bins=bins, label='generated', color='red')
+    calc_trend(feature_real, real, bins=bins, label='real', color='blue', window_size=window_size, issum=name[:3] == 'Sum')
+    calc_trend(feature_gen, gen, bins=bins, label='generated', color='red', window_size=window_size, issum=name[:3] == 'Sum')
     plt.legend()
     plt.title(name)
 

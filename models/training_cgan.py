@@ -15,8 +15,8 @@ def train(data, train_step_fn, loss_eval_fn, num_epochs, batch_size,
         losses_train = {}
 
         for i_sample in trange(0, len(data_train), batch_size):
-            batch = data_train[shuffle_ids][i_sample:i_sample + batch_size]
-            batch_param = param_train[shuffle_ids][i_sample:i_sample + batch_size]
+            batch = data_train[shuffle_ids[i_sample:i_sample + batch_size]]
+            batch_param = param_train[shuffle_ids[i_sample:i_sample + batch_size]]
 
             losses_train_batch = train_step_fn(batch, batch_param)
             for k, l in losses_train_batch.items():

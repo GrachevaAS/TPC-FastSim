@@ -9,25 +9,28 @@ import tensorflow as tf
 from data import preprocessing
 from metrics import get_val_metric_v
 from models.training_cgan import train
-from models.baseline_10x10_cgan import BaselineModel10x10
+from models.baseline_10x10_cgan import BaselineModel
 
 
 def main():
     parser = argparse.ArgumentParser(fromfile_prefix_chars='@')
     parser.add_argument('--checkpoint_name', type=str, required=True)
-    parser.add_argument('--batch_size', type=int, default=128, required=False)
+    parser.add_argument('--batch_size', type=int, default=256, required=False)
     parser.add_argument('--lr', type=float, default=1e-4, required=False)
     parser.add_argument('--num_disc_updates', type=int, default=3, required=False)
-    parser.add_argument('--lr_schedule_rate', type=float, default=0.998, required=False)
+    parser.add_argument('--lr_schedule_rate', type=float, default=0.9998, required=False)
     parser.add_argument('--du_schedule_rate', type=float, default=1., required=False)
     parser.add_argument('--save_every', type=int, default=50, required=False)
-    parser.add_argument('--num_epochs', type=int, default=5000, required=False)
+    parser.add_argument('--num_epochs', type=int, default=10000, required=False)
     parser.add_argument('--latent_dim', type=int, default=32, required=False)
     parser.add_argument('--gpu_num', type=str, required=False)
     parser.add_argument('--kernel_init', type=str, default='glorot_uniform', required=False)
     parser.add_argument('--gp_lambda', type=float, default=1., required=False)
     parser.add_argument('--dropout_rate', type=float, default=0.02, required=False)
     parser.add_argument('--data_version', type=int, default=3, required=False)
+    parser.add_argument('--gen_type', type=str, default='normal', required=False)
+    parser.add_argument('--discrim_type', type=str, default='normal', required=False)
+    parser.add_argument('--activation', type=str, default='relu', required=False)
 
     args = parser.parse_args()
 
@@ -89,10 +92,12 @@ def main():
 
     X_train, X_valid, X_test = normalize_features(X_train), normalize_features(X_valid), normalize_features(X_test)
 
-    model = BaselineModel10x10(kernel_init=args.kernel_init, lr=args.lr,
-                               num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
-                               gp_lambda=args.gp_lambda, dropout_rate=args.dropout_rate,
-                               num_features=features.shape[1], shape=data.shape[1:])
+    model = BaselineModel(kernel_init=args.kernel_init, lr=args.lr,
+                          num_disc_updates=args.num_disc_updates, latent_dim=args.latent_dim,
+                          gp_lambda=args.gp_lambda, dropout_rate=args.dropout_rate,
+                          num_features=features.shape[1], shape=data.shape[1:],
+                          generator_type=args.gen_type, discrim_type=args.discrim_type,
+                          activation=args.activation)
 
     writer_train = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/train')
     writer_val = tf.summary.create_file_writer(f'train_logs/{args.checkpoint_name}/validation')
@@ -116,6 +121,8 @@ def main():
                                            save_every=args.save_every, writer=writer_val,
                                            model=model, sample=(X_valid, Y_valid), metrics_real=metric_real,
                                            )
+    if args.data_version == 2:
+        write_hist_summary = functools.partial(write_hist_summary, features_names=('crossing_angle',))
 
     train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses,
           args.num_epochs, args.batch_size,

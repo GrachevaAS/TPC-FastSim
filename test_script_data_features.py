@@ -77,6 +77,8 @@ def main():
     features = features.astype('float32')
     if args.data_version == 2:
         features = features[:, :1]
+    if args.data_version == 4:
+        features[:, 3] %= 1.
 
     Y_train, Y, X_train, X = train_test_split(data_scaled, features, test_size=0.3, random_state=42)
     Y_valid, Y_test, X_valid, X_test = train_test_split(Y, X, test_size=0.5, random_state=42)

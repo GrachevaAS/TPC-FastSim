@@ -9,12 +9,11 @@ def unscale(x):
     return 10 ** x - 1
 
 
-def get_images(model, sample,
+def get_images(model, sample, features_names,
                metrics_real=None,
                return_raw_data=False, return_raw_metrics=False, calc_chi2=False,
                gen_more=None,
-               batch_size=128,
-               features_names=('crossing_angle', 'dip_angle', 'drift_length')):
+               batch_size=128):
     X, Y = sample
     assert X.ndim == 2
     assert X.shape[1] == len(features_names)
@@ -63,20 +62,19 @@ def get_images(model, sample,
     return result
 
 
-def write_hist_summary(step, save_every, writer,
-                       model=None, sample=None, metrics_real=None,
-                       features_names=('crossing_angle', 'dip_angle', 'drift_length')):
+def write_hist_summary(step, save_every, writer, features_names,
+                       model=None, sample=None, metrics_real=None, nbins=4):
     assert model is not None and sample is not None
     X, Y = sample
     if step % save_every == 0:
         images, images1, img_amplitude, (gen_features, gen), (metrics_real, metrics_gen), chi2 = get_images(
-            model, sample, metrics_real=metrics_real,
+            model, sample, metrics_real=metrics_real, features_names=features_names,
             return_raw_data=True, return_raw_metrics=True,
-            calc_chi2=True, features_names=features_names
+            calc_chi2=True
         )
         stats_uncond, stats_cond = get_ks_and_rstat(X, gen_features, metrics_real, metrics_gen,
                                                     features_names=features_names)
-        stats_md = get_ksstat_multidimensional(X, gen_features, metrics_real, metrics_gen)
+        stats_md = get_ksstat_multidimensional(X, gen_features, metrics_real, metrics_gen, nbins=nbins)
 
         with writer.as_default():
             tf.summary.scalar("chi2", chi2, step)
@@ -100,8 +98,7 @@ def write_hist_summary(step, save_every, writer,
             tf.summary.image("log10(amplitude + 1)", img_amplitude, step)
 
 
-def get_ks_and_rstat(real_features, gen_features, metrics_real, metrics_gen, select_max=False,
-                     features_names=('crossing_angle', 'dip_angle', 'drift_length')):
+def get_ks_and_rstat(real_features, gen_features, metrics_real, metrics_gen, features_names, select_max=False):
     stats_cond = [[] for _ in range(len(features_names))]
     for i in range(len(features_names)):
         for j in range(metrics_gen.shape[-1]):
@@ -120,9 +117,9 @@ def get_ks_and_rstat(real_features, gen_features, metrics_real, metrics_gen, sel
     return np.array(stats_uncond), np.array(stats_cond)
 
 
-def get_ksstat_multidimensional(real_features, gen_features, metrics_real, metrics_gen):
+def get_ksstat_multidimensional(real_features, gen_features, metrics_real, metrics_gen, nbins=4):
     stats_cond = [metrics.calc_bin_stats_multidimensional(
-            real_features, metrics_real[:, j], gen_features, metrics_gen[:, j]
+            real_features, metrics_real[:, j], gen_features, metrics_gen[:, j], nbins=nbins
         ).mean() for j in range(metrics_real.shape[-1])
     ]
     return np.array(stats_cond)

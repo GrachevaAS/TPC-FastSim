@@ -20,7 +20,7 @@ def main():
     parser.add_argument('--num_disc_updates', type=int, default=3, required=False)
     parser.add_argument('--lr_schedule_rate', type=float, default=0.9998, required=False)
     parser.add_argument('--du_schedule_rate', type=float, default=1., required=False)
-    parser.add_argument('--save_every', type=int, default=50, required=False)
+    parser.add_argument('--save_every', type=int, default=100, required=False)
     parser.add_argument('--num_epochs', type=int, default=10000, required=False)
     parser.add_argument('--latent_dim', type=int, default=32, required=False)
     parser.add_argument('--gpu_num', type=str, required=False)
@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--data_version', type=int, default=3, required=False)
     parser.add_argument('--gen_type', type=str, default='normal', required=False)
     parser.add_argument('--discrim_type', type=str, default='normal', required=False)
-    parser.add_argument('--activation', type=str, default='relu', required=False)
+    parser.add_argument('--activation', type=str, default='leaky_relu', required=False)
 
     args = parser.parse_args()
 
@@ -68,7 +68,7 @@ def main():
             model.generator.save(str(model_path.joinpath("generator_{:05d}.h5".format(step))))
             model.discriminator.save(str(model_path.joinpath("discriminator_{:05d}.h5".format(step))))
 
-    params_dict = {2: ((39, 47), (267, 275)), 3: ((41, 47), (-7, 7))}
+    params_dict = {2: ((39, 47), (267, 275)), 3: ((41, 47), (-7, 7)), 4: ((-3, 5), (-9, 9))}
     pad_range, time_range = params_dict[args.data_version]
     data, features = preprocessing.read_csv_2d(version=f'data_v{args.data_version}',
                                                pad_range=pad_range, time_range=time_range)
@@ -117,12 +117,14 @@ def main():
 
     from common import write_hist_summary, unscale
     metric_real = get_val_metric_v(unscale(Y_valid))
+    features_names = ('crossing_angle', 'dip_angle', 'drift_length', 'pad_coordinate')
+    nbins_dict = {1: 25, 2: 10, 3: 4, 4: 3}
+    features_names = features_names[:X_train.shape[1]]
     write_hist_summary = functools.partial(write_hist_summary,
-                                           save_every=args.save_every, writer=writer_val,
+                                           save_every=args.save_every, writer=writer_val, features_names=features_names,
                                            model=model, sample=(X_valid, Y_valid), metrics_real=metric_real,
+                                           nbins=nbins_dict[args.data_version]
                                            )
-    if args.data_version == 2:
-        write_hist_summary = functools.partial(write_hist_summary, features_names=('crossing_angle',))
 
     train((Y_train, Y_valid, X_train, X_valid), model.training_step, model.calculate_losses,
           args.num_epochs, args.batch_size,

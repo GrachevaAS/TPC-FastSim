@@ -84,7 +84,6 @@ def calc_bin_stats_multidimensional(feature_real, real, feature_gen, gen, nbins=
     assert nbins > 0
     assert feature_real.ndim == 2 and feature_gen.ndim == 2
     nfeatures = feature_real.shape[1]
-    assert nfeatures == 3  # TODO
     cats_real, cats_gen = [], []
 
     for i in range(nfeatures):
@@ -106,22 +105,20 @@ def calc_bin_stats_multidimensional(feature_real, real, feature_gen, gen, nbins=
     counter = np.zeros(tuple([nbins] * nfeatures))
     for mdbin in cats_real:
         counter[tuple(mdbin)] += 1
-    assert ((counter > 30).all())
+    assert ((counter > 15).all())
 
     cats_gen = np.stack(cats_gen).T
     counter = np.zeros(tuple([nbins] * nfeatures))
     for mdbin in cats_gen:
         counter[tuple(mdbin)] += 1
-    assert ((counter > 30).all())
+    assert ((counter > 15).all())
 
-    # only 3 dimensions
-    x, y, z = np.mgrid[0:nbins:1, 0:nbins:1, 0:nbins:1]
-    grid = np.stack([x, y, z], axis=-1).reshape(-1, nfeatures)
-
+    alldims = np.meshgrid(*[np.arange(0, nbins)] * nfeatures)
+    grid = np.stack(alldims, axis=-1).reshape(-1, nfeatures)
     ksstats = np.array([get_kolmogorov_smirnov_stat(
-        real[(cats_real == xyz).all(axis=-1)],
-        gen[(cats_gen == xyz).all(axis=-1)]
-    )[0] for xyz in grid]
+        real[(cats_real == cat).all(axis=-1)],
+        gen[(cats_gen == cat).all(axis=-1)]
+    )[0] for cat in grid]
     )
     return ksstats
 
